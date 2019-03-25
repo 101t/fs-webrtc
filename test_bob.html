@@ -4,26 +4,26 @@
 	<title>WSS Test Connection | SIP JS</title>
 </head>
 <ul>
-  <li><a href="ws_test.php">WS Test</a></li>
-  <li><a href="wss_test.php">WSS Test</a></li>
+  <li><a href="test_bob.html">WS Test</a></li>
+  <li><a href="test_alice.html">WSS Test</a></li>
 </ul>
 <body>
 <script type="text/javascript" src="js/sip-0.13.5.min.js"></script>
 <script type="text/javascript">
 var config = {
   // Replace this IP address with your FreeSWITCH IP address
-  uri: '1000@192.168.1.170',
+  uri: '1001@192.168.1.170',
 
   // Replace this IP address with your FreeSWITCH IP address
   // and replace the port with your FreeSWITCH wss port
   //ws_servers: 'wss://192.168.1.170:7443',
   transportOptions: {
-    wsServers: ['wss://192.168.1.170:7443']
+    wsServers: ['ws://192.168.1.170:5066']
   },
 
   // FreeSWITCH Default Username
-  authorizationUser: '1000',
-  displayName: "Tarek Kalaji",
+  authorizationUser: '1001',
+  displayName: "Bob",
   autostart: true,
 
   // FreeSWITCH Default Password
