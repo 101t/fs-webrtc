@@ -6,7 +6,7 @@
         <div class="row">
             <div class="col-md-6">
                 <div id="local">
-                    <video muted></video>
+                    <video muted style="width:100%;"></video>
                     <button id="audio-toggle" class="btn btn-secondary on" type="button">Toggle Audio</button>
                     <button id="video-toggle" class="btn btn-secondary on" type="button">Toggle Video</button>
                 </div>
