@@ -1,12 +1,12 @@
 <div class="card" >
     <div id="remote">
-        <video class="card-img-top"></video>
+        <video id="remotevideo" class="card-img-top" autoplay></video>
     </div>
     <div class="card-body">
         <div class="row">
             <div class="col-md-6">
                 <div id="local">
-                    <video muted style="width:100%;"></video>
+                    <video id="localvideo" muted style="width:100%;" autoplay></video>
                     <button id="audio-toggle" class="btn btn-secondary on" type="button">Toggle Audio</button>
                     <button id="video-toggle" class="btn btn-secondary on" type="button">Toggle Video</button>
                 </div>

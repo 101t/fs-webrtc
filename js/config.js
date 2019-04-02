@@ -13,169 +13,204 @@ var mediaConstraints = {
 
 var conf, priv;
 
-var localVideo = document.querySelector("#local video");
-var remoteVideo = document.querySelector("#remote video");
+/*var localVideo = document.querySelector("#local video");
+var remoteVideo = document.querySelector("#remote video");*/
+var localVideo = document.getElementById("localvideo");
+var remoteVideo = document.getElementById("remotevideo");
 
 var toggles = {
 	audio: document.getElementById("audio-toggle"),
     video: document.getElementById("video-toggle")
 };
 
-var room = location.hash && location.hash.replace(/^#([a-zA-Z0-9-_.~~*'()&=+$,;?\/%]*).*/, '$1');
-
-function attachMediaStream(element, stream) {
-    if (typeof element.srcObject !== 'undefined') {
-        element.srcObject = stream;
-    } else if (typeof element.mozSrcObject !== 'undefined') {
-        element.mozSrcObject = stream;
-    } else if (typeof element.src !== 'undefined') {
-        element.src = URL.createObjectURL(stream);
-    } else {
-        console.log('Error attaching stream to element. ##################');
-    }
-    //console.log(element);
-    setTimeout(function() {
-        element.play();
-    }, 0);
-}
-
 function createSimpleSIP(mymail, username, password, displayName, targetmail){
-    //navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
-    navigator.mediaDevices.getUserMedia({ audio: true, video: true}).then(function(stream){
-        window.localStream = stream;
-        var options = {
-            constraints: {
-                audio: true,
-                video: true
-            },
-            media: {stream: window.localStream},
-            sessionDescriptionHandlerOptions: {
-                constraints: {
-                  audio: true,
-                  video: false
-                },
-                //iceCheckingTimeout: 5000
-            }
-        };
-        attachMediaStream(localVideo, stream);
-        // set up our private UA with private URI
-        priv = new SIP.UA({
-            uri: mymail,
-            wsServers: url,
-            authorizationUser: username,
-            password: password,
-            displayName: displayName,
-            autostart: true,
-            register: true,
-            traceSip: true,
-            transportOptions: { wsServers: url }
-            /*sessionDescriptionHandlerFactoryOptions: {
-                constraints: {
-                    audio: true,
-                    video: true
-                },
-                rtcConfiguration: {
-                    rtcpMuxPolicy: 'negotiate'
-                },
-            }*/
-        });
-        priv.once('registered', function(){
-            //priv.message(conf.configuation.uri, "Invite me, please!");
-        });
-        priv.on('invite', function(session){
-            console.log('accepting session ##################');
-            session.accept(options);
-            session.on('accepted', function(){
-                console.log(this);
-                this.data.remote = attachMediaStream(remoteVideo, this.getRemoteStreams()[0]);
-                this.mute({
-                    audio: toggles['audio'].classList.contains('off'),
-                    video: toggles['video'].classList.contains('off')
-                });
-                this.data.remote;
-            });
-            session.on('bye', function(){
-                console.log('Bye')
-                console.log(this.data.remote);
-            });
-            session.on('trackAdded', function(){
-                console.log("trackAdded ##################");
-                var pc = session.sessionDescriptionHandler.peerConnection;
-                var remoteStream = new MediaStream();
-                pc.getReceivers().forEach(function(receiver) {
-                    remoteStream.addTrack(receiver.track);
-                });
-                attachMediaStream(remoteVideo, remoteStream);
+	var localStream = null;
+	/*navigator.mediaDevices.getUserMedia({ audio: true, video: true}).then(function(stream){
+		localStream = stream;
+		localVideo.srcObject = stream;
+        localVideo.play();
 
-                /*var localStream = window.localStream;
-                pc.getSenders().forEach(function(sender) {
-                    localStream.addTrack(sender.track);
-                });*/
-            });
-        });
-        priv.start();
-        priv.invite(targetmail, options)
-        priv.on('accepted', function(){
-            this.data.remote = attachMediaStream(remoteVideo, this.getRemoteStreams()[0]);
-            this.mute({
-                audio: toggles['audio'].classList.contains('off'),
-                video: toggles['video'].classList.contains('off') 
-            });
-        });
-        priv.on('bye', function(){
-            console.log('Bye!!!!');
-            console.log(this.data.remote);
-        });
-        // set up our shared uri used to receive join requests (and other things)
-        /*conf = new SIP.UA({
-            uri: targetmail,
-            wsServers: url,
-            traceSip: true,
-        });
-        conf.on('message', function(message){
-            console.log("sending invite with localStream");
-            console.log(window.localStream);
-            priv.invite(message.remoteIdentity.uri.toString(), options)
-            priv.on('accepted', function(){
-                this.data.remote = attachMediaStream(remoteVideo, this.getRemoteStreams()[0]);
-                this.mute({
-                    audio: toggles['audio'].classList.contains('off'),
-                    video: toggles['video'].classList.contains('off') 
-                });
-            });
-            priv.on('bye', function(){
-                console.log('Bye!!!!');
-                console.log(this.data.remote);
-            });
-        });
-        conf.start();*/
-        // shut everything down cleanly before the window closes
-        window.onbeforeunload = function() {
-            //if (!!conf) {conf.stop();}
-            if (!!priv) {priv.stop();}
-        };
-        function mute(type, display) {
-            return function(e) {
-                var toggle = toggles[type].classList.contains('off');
-
-                // Toggle classes
-                toggles[type].classList[toggle ? 'add' : 'remove']('on');
-                toggles[type].classList[toggle ? 'remove' : 'add']('off');
-
-                if (type === 'video') localVideo[toggle ? 'play' : 'pause']();
-
-                var s;
-                for (s in priv.sessions) {
-                    priv.sessions[s][toggle ? 'unmute' : 'mute']({
-                        video: type === 'video',
-                        audio: type === 'audio'
-                    });
-                }
-
-                toggles[type].blur();
-            };
-        }
-        toggles.video.addEventListener('click', mute('video', 'Video'), false);
-        toggles.audio.addEventListener('click', mute('audio', 'Audio'), false);
-    });
+	}, function() {});*/
+	if (window.RTCPeerConnection) {
+		priv = new SIP.Web.Simple({
+			media: {
+				remote: {
+					video: remoteVideo,
+					audio: remoteVideo
+				},
+				local: {
+					video: localVideo,
+					audio: localVideo
+				}
+			},
+			ua: {
+				uri: mymail,
+		        wsServers: url,
+		        authorizationUser: username,
+		        password: password,
+		        displayName: displayName,
+		        //rel100: SIP.C.supported.SUPPORTED,
+		        hackViaTcp: true,
+		        autostart: false,
+		        register: true,
+		        traceSip: true,
+		        sessionDescriptionHandlerFactoryOptions: {
+		            constraints: {
+		                audio: true,
+		                video: true
+		            },
+		            rtcConfiguration: {
+		                rtcpMuxPolicy: 'negotiate'
+		            },
+		        }
+			}
+		});
+		/*priv = new SIP.UA({
+			uri: mymail,
+			wsServers: url,
+			authorizationUser: username,
+			password: password,
+			displayName: displayName,
+			hackViaTcp: true,
+			autostart: true,
+			register: true,
+			traceSip: true,
+			transportOptions: { wsServers: url },
+			sessionDescriptionHandlerFactoryOptions: {
+				constraints: mediaConstraints,
+				render: {
+					remote: remoteVideo,
+					local: localVideo
+				},
+				rtcConfiguration: {
+				    rtcpMuxPolicy: 'negotiate'
+				},
+				alwaysAcquireMediaFirst: true,
+			}
+		});*/
+		priv.on('ended', function(){
+			console.log("ended");
+		});
+		priv.on('connected', function(session){
+			console.log("connected");
+			/*var pc = session.sessionDescriptionHandler.peerConnection;
+			var receivers = pc.getReceivers();
+			if (receivers.length) {
+				var remoteStream = new MediaStream();
+				receivers.forEach(function(receiver){
+					remoteStream.addTrack(receiver.track);
+				});
+				console.warn("HELLO :D :D :D :D");
+				remoteVideo.srcObject = remoteStream;
+				remoteVideo.play();
+			}*/
+		})
+		priv.on('ringing', function(){
+			priv.answer();
+		});
+		/*if (priv.state === SIP.Web.Simple.C.STATUS_NULL || 
+			priv.state === SIP.Web.Simple.C.STATUS_COMPLETED) {
+			priv.call(targetmail);
+		} else {
+			priv.hangup();
+		}*/
+		priv.on('registered', function(session){
+			priv.call(targetmail, {
+				media: {
+					constraints: mediaConstraints,
+					render: {
+						remote: remoteVideo,
+						local: localVideo,
+					}
+				},
+			});
+			/*priv.hold();
+			priv.unhold();*/
+		});
+		priv.on('invite', function(session){
+			session.accept({
+				constraints: mediaConstraints,
+				sessionDescriptionHandlerFactoryOptions: {
+					peerConnectionOptions: {
+						rtcConfiguration: {
+							iceTransportPolicy: 'all',
+							iceServers: [{
+								urls: 'stun:stun.l.google.com:19302'
+							}],
+						}
+					}
+				},
+				media: {
+					constraints: mediaConstraints,
+					render: {
+						remote: remoteVideo,
+						//local: localVideo,
+					},
+				}
+			});
+			session.on('SessionDescriptionHandler-created', function(sdh){
+				sdh.on('userMedia', function(stream){
+					localVideo.srcObject = new MediaStream(stream);
+					localVideo.play();
+				})
+			})
+		});
+		priv.on('accepted', function(session){
+			console.log("session accepted");
+			var pc = session.sessionDescriptionHandler.peerConnection;
+			var receivers = pc.getReceivers();
+			if (receivers.length) {
+				var remoteStream = new MediaStream();
+				receivers.forEach(function(receiver){
+					remoteStream.addTrack(receiver.track);
+				});
+				remoteVideo.srcObject = remoteStream;
+				remoteVideo.play();
+			};
+			session.on('trackAdded', function(){
+				var pc = session.sessionDescriptionHandler.peerConnection;
+				var receivers = pc.getReceivers();
+				if (receivers.length) {
+					var remoteStream = new MediaStream();
+					receivers.forEach(function(receiver){
+						remoteStream.addTrack(receiver.track);
+					});
+					console.warn("HELLO :D :D :D :D");
+					remoteVideo.srcObject = remoteStream;
+					remoteVideo.play();
+				}
+				var senders = pc.getSenders();
+				if (senders.length) {
+					var localStream = new MediaStream();
+					senders.forEach(function(sender){
+						localStream.addTrack(sender.track);
+					});
+					localVideo.srcObject = localStream;
+					localVideo.play();
+				}
+			});
+		});
+		/*priv.invite(targetmail, {
+			sessionDescriptionHandlerOptions: {
+				constraints: {
+					audio: true,
+					video: true
+				},
+				iceCheckingTimeout: 5000
+			}
+		});*/
+		priv.on('userMedia', function (stream) {
+			console.log(stream);
+		})
+		/*var session = priv.subscribe(targetmail, 'presence');
+		session.invite(targetmail, {
+			sessionDescriptionHandlerOptions: {
+				constraints: {
+					audio: true,
+					video: false
+				},
+				iceCheckingTimeout: 5000
+			}
+		});*/
+	}
 }

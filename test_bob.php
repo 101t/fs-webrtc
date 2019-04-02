@@ -29,6 +29,7 @@ var displayName = "<?php dd($displayName) ?>";
 var mymail = `${username}@${host}`;
 
 createSimpleSIP(mymail, username, password, displayName, targetmail);
+//createSimpleSIP(targetmail, username, password, displayName, mymail);
 </script>
 </body>
 </html>
