@@ -17,6 +17,7 @@
                     <button class="btn btn-danger" id="cancelButton" type="button">Cancel Call <i class="fas fa-phone-slash"></i></button>
                     <button class="btn btn-success" id="answerButton" type="button">Answer Call <i class="fas fa-volume-up"></i></button>
                 </div>
+                <div class="label label-info" id="callstatus">Ready</div>
             </div>
         </div>
     </div>

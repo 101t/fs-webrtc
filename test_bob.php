@@ -1,8 +1,8 @@
 <?php 
-$username = '1001';
+$username = '1000';
 $password = '1234';
 $displayName = 'Bob';
-$targetuser = '1000';
+$targetuser = '1001';
 function dd($name){echo $name;}
 ?>
 <!DOCTYPE html>

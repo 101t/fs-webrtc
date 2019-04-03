@@ -2,7 +2,7 @@
 $username = '1000';
 $password = '1234';
 $displayName = 'Alice';
-$targetuser = '1001';
+$targetuser = '1000';
 function dd($name){echo $name;}
 ?>
 <!DOCTYPE html>
