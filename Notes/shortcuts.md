@@ -1,12 +1,16 @@
-### Important URL and Article References:
+### After installing FreeSWITCH:
 
-1. http://omid-mohajerani.blogspot.com/2014/07/learning-freeswitch-as-asterisk-man.html
+You could run freeswitch as service in background
+```sh
+sudo /usr/local/freeswitch/bin/freeswitch -nc
+```
 
-2. https://saevolgo.blogspot.com/2012/07/freeswitch-with-sip-users-in-mysql-mod.html
+You may run freeswitch cli
+```sh
+/usr/local/freeswitch/bin/fs_cli
+```
 
-3. https://freeswitch.org/confluence/display/FREESWITCH/Command-Line+Interface+fs_cli
-
-Some usefull commands:
+### Some usefull commands:
 
 To see all registered profile internal users
 
@@ -34,3 +38,11 @@ To reload all xml after configure it
 ```
 reloadxml
 ```
+
+### Important URL and Article References:
+
+1. http://omid-mohajerani.blogspot.com/2014/07/learning-freeswitch-as-asterisk-man.html
+
+2. https://saevolgo.blogspot.com/2012/07/freeswitch-with-sip-users-in-mysql-mod.html
+
+3. https://freeswitch.org/confluence/display/FREESWITCH/Command-Line+Interface+fs_cli
