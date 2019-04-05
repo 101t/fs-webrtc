@@ -68,7 +68,8 @@ button.off {
   background: #333 url('img/giant_handset.png') center no-repeat;
 }
 
-
 #remotes video {
   height: auto;
 }
+
+.card-img-top {border:1px solid #0069ff;}

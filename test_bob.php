@@ -21,6 +21,8 @@ function dd($name){echo $name;}
 <?php include("includes/js.php"); ?>
 <script type="text/javascript" src="js/config.js"></script>
 <script type="text/javascript">
+var menu = document.querySelectorAll("#menu li a");
+menu[1].classList.add("active");
 var targetuser = '<?php dd($targetuser) ?>';
 var targetmail = `${targetuser}@${host}`;
 var username = "<?php dd($username) ?>";
@@ -29,7 +31,6 @@ var displayName = "<?php dd($displayName) ?>";
 var mymail = `${username}@${host}`;
 
 createSimpleSIP(mymail, username, password, displayName, targetmail);
-//createSimpleSIP(targetmail, username, password, displayName, mymail);
 </script>
 </body>
 </html>

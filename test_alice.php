@@ -1,5 +1,5 @@
 <?php 
-$username = '1000';
+$username = '1001';
 $password = '1234';
 $displayName = 'Alice';
 $targetuser = '1000';
@@ -21,6 +21,8 @@ function dd($name){echo $name;}
 <?php include("includes/js.php"); ?>
 <script type="text/javascript" src="js/config.js"></script>
 <script type="text/javascript">
+var menu = document.querySelectorAll("#menu li a");
+menu[2].classList.add("active");
 var targetuser = '<?php dd($targetuser) ?>';
 var targetmail = `${targetuser}@${host}`;
 var username = "<?php dd($username) ?>";
