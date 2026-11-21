@@ -12,7 +12,7 @@ categories = ["web-programming::http-server", "multimedia"]
 [dependencies]
 argon2 = "0.6"
 axum = { version = "0.8", features = ["ws"] }
-base64 = "0.22"
+base64 = "0.23"
 clap = { version = "4.6", features = ["derive", "env"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 getrandom = "0.4"
@@ -22,7 +22,7 @@ sha2 = "0.11"
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
 thiserror = "2"
 tokio = { version = "1.54", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time"] }
-tokio-tungstenite = "0.29"
+tokio-tungstenite = "0.30"
 tower-http = { version = "0.7", features = ["fs", "trace", "timeout", "sensitive-headers", "set-header"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
