@@ -1,1 +1,0 @@
-<script type="text/javascript" src="https://cdn.rawgit.com/onsip/SIP.js/0.13.7/dist/sip-0.13.7.min.js"></script>
