@@ -1,6 +1,6 @@
 [package]
 name = "fs-webrtc"
-version = "1.0.0"
+version = "1.0.2"
 edition = "2024"
 rust-version = "1.85"
 description = "Self-hosted, private 1:1 audio and video calls between contacts, powered by FreeSWITCH and WebRTC."
