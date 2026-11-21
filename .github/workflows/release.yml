@@ -72,7 +72,7 @@ jobs:
           cp -r contrib "dist/$NAME/"
           tar -C dist -czf "dist/$NAME.tar.gz" "$NAME"
           (cd dist && sha256sum "$NAME.tar.gz" > "$NAME.tar.gz.sha256")
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: binary
           path: dist/*.tar.gz*
