@@ -22,7 +22,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: version
         name: Tag must match Cargo.toml
         run: |
@@ -51,7 +51,7 @@ jobs:
       TARGET: x86_64-unknown-linux-musl
       NAME: fs-webrtc-${{ needs.verify.outputs.version }}-x86_64-linux
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-unknown-linux-musl
@@ -84,7 +84,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -121,7 +121,7 @@ jobs:
     env:
       VERSION: ${{ needs.verify.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v4
         with:
           name: binary
