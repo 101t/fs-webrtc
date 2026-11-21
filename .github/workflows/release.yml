@@ -1,0 +1,149 @@
+# Numbered releases. Cut one locally with `make release-patch` (or -minor / -major), then
+# `git push origin HEAD vX.Y.Z`. This workflow then publishes:
+#   * Docker image  ghcr.io/<owner>/fs-webrtc:X.Y.Z, :X.Y, :X and :latest
+#   * static Linux binary (musl) with the built web app + SHA-256 checksum
+#   * a GitHub Release whose notes are the CHANGELOG.md section for X.Y.Z
+name: release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        name: Tag must match Cargo.toml
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          crate=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          if [ "$tag" != "$crate" ]; then
+            echo "::error::tag v$tag does not match Cargo.toml version $crate (use make release)"; exit 1
+          fi
+          grep -q "^## \[$tag\]" CHANGELOG.md || { echo "::error::CHANGELOG.md has no [$tag] section"; exit 1; }
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: make check
+
+  binary:
+    needs: verify
+    runs-on: ubuntu-latest
+    env:
+      TARGET: x86_64-unknown-linux-musl
+      NAME: fs-webrtc-${{ needs.verify.outputs.version }}-x86_64-linux
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: cd web && npm ci --no-audit --no-fund && npm run build
+      - run: cargo build --release --locked --target "$TARGET"
+      - name: Package
+        run: |
+          mkdir -p "dist/$NAME/web"
+          cp "target/$TARGET/release/fs-webrtc" README.md LICENSE CHANGELOG.md .env.example docker-compose.yml "dist/$NAME/"
+          cp -r web/dist "dist/$NAME/web/dist"
+          cp -r contrib "dist/$NAME/"
+          tar -C dist -czf "dist/$NAME.tar.gz" "$NAME"
+          (cd dist && sha256sum "$NAME.tar.gz" > "$NAME.tar.gz.sha256")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary
+          path: dist/*.tar.gz*
+
+  docker:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+          labels: |
+            org.opencontainers.image.title=fs-webrtc
+            org.opencontainers.image.description=Self-hosted private voice and video calls between contacts, powered by FreeSWITCH and WebRTC
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          # Add linux/arm64 here (plus docker/setup-qemu-action) if you need ARM images; it is slow under emulation.
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  github-release:
+    needs: [verify, binary, docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: binary
+          path: dist
+      - name: Release notes from CHANGELOG.md
+        run: |
+          awk -v v="$VERSION" '$0 ~ "^## \\[" v "\\]" {on=1; next} on && /^## \[/ {exit} on' CHANGELOG.md > notes.md
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          cat >> notes.md <<EOF
+
+          ## Install
+
+          \`\`\`bash
+          curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/master/install.sh | FSW_REF=v$VERSION sh
+          \`\`\`
+
+          Or \`docker pull $image:$VERSION\`, or download \`fs-webrtc-$VERSION-x86_64-linux.tar.gz\` below:
+          a static binary with the web app, plus the FreeSWITCH and systemd files from \`contrib/\`.
+          Verify it with \`sha256sum -c *.sha256\`.
+          EOF
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: fs-webrtc v${{ env.VERSION }}
+          body_path: notes.md
+          files: dist/*
