@@ -142,7 +142,7 @@ jobs:
           a static binary with the web app, plus the FreeSWITCH and systemd files from \`contrib/\`.
           Verify it with \`sha256sum -c *.sha256\`.
           EOF
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           name: fs-webrtc v${{ env.VERSION }}
           body_path: notes.md
