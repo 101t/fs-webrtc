@@ -6,6 +6,18 @@ Each `## [x.y.z]` section becomes the notes of the GitHub Release for tag `vx.y.
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-11-21
+
+### Added
+- Account settings: change password (signs out other devices, replaces the SIP password) and
+  delete account.
+- Sign-in protection: an account locks for 15 minutes after 5 wrong passwords.
+- TURN servers with credentials (`FSW_TURN_USERNAME`, `FSW_TURN_PASSWORD`) for networks that block UDP.
+
+### Changed
+- The shipped `freeswitch.xml` puts the event socket on 127.0.0.1:8031 instead of 8021, so the
+  stack can run next to another FreeSWITCH on the same host. Use `fs_cli -P 8031` (or `make fs-cli`).
+
 ## [1.0.0] - 2026-11-21
 
 Complete rewrite. The PHP + SIP.js 0.13 demo with hard-coded test users is now a self-hosted
@@ -17,10 +29,6 @@ calling app.
   enforced by FreeSWITCH's dialplan, not just the UI.
 - One-to-one voice and video calls in the browser: ringing dialog, ringback, mute, camera
   toggle, call timer, missed/declined/busy notices, online indicator.
-- Account settings: change password (signs out other devices, replaces the SIP password) and
-  delete account.
-- Sign-in protection: an account locks for 15 minutes after 5 wrong passwords.
-- TURN servers with credentials (`FSW_TURN_USERNAME`, `FSW_TURN_PASSWORD`) for networks that block UDP.
 - Rust server (axum, SQLite) that serves the React app, the REST API with OpenAPI docs at `/docs`,
   and relays SIP over WebSocket to FreeSWITCH at `/sip`.
 - FreeSWITCH driven by mod_xml_curl: users and call routes come from the server; the shipped
