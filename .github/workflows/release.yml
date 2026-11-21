@@ -102,7 +102,7 @@ jobs:
           labels: |
             org.opencontainers.image.title=fs-webrtc
             org.opencontainers.image.description=Self-hosted private voice and video calls between contacts, powered by FreeSWITCH and WebRTC
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           # Add linux/arm64 here (plus docker/setup-qemu-action) if you need ARM images; it is slow under emulation.
