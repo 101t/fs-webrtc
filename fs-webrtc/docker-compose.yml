@@ -1,0 +1,53 @@
+# fs-webrtc + FreeSWITCH + Caddy (automatic HTTPS) on one host.
+#
+#   ./install.sh                    # or: cp .env.example .env and fill in FSW_DOMAIN + FSW_FREESWITCH_SECRET
+#   docker compose up -d            # add --build to build fs-webrtc from source
+#   open https://$FSW_DOMAIN
+#
+# All three use host networking: WebRTC media needs real UDP ports, and fs-webrtc and
+# FreeSWITCH talk over 127.0.0.1 only. Open TCP 80, 443 and UDP 16384-16584 in your firewall.
+services:
+  fs-webrtc:
+    # Released image; pin a version with FSW_VERSION=1.0.0. `--build` builds from source instead.
+    image: ghcr.io/101t/fs-webrtc:${FSW_VERSION:-latest}
+    build: .
+    env_file: .env
+    environment:
+      FSW_LISTEN: 127.0.0.1:8090
+    network_mode: host
+    volumes:
+      - fsw-data:/var/lib/fs-webrtc
+    restart: unless-stopped
+
+  freeswitch:
+    image: safarov/freeswitch:latest
+    network_mode: host
+    environment:
+      # Read by contrib/freeswitch/freeswitch.xml. Required: an empty event socket password
+      # would make FreeSWITCH fall back to the stock "ClueCon".
+      FSW_FREESWITCH_SECRET: ${FSW_FREESWITCH_SECRET:?set FSW_FREESWITCH_SECRET in .env}
+      # Public IP announced for media. Default: discover it with STUN at startup.
+      FSW_EXT_IP: ${FSW_EXT_IP:-stun:stun.l.google.com:19302}
+    # The image's own healthcheck uses the default event socket password, which we replaced.
+    healthcheck:
+      test: ["CMD-SHELL", "fs_cli -p \"$$FSW_FREESWITCH_SECRET\" -x status | grep -q ^UP"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+    volumes:
+      - ./contrib/freeswitch/freeswitch.xml:/etc/freeswitch/freeswitch.xml:ro
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    network_mode: host
+    # TLS for FSW_DOMAIN (Let's Encrypt for a domain, a local CA for an IP or localhost),
+    # HTTP -> HTTPS redirect, WebSocket included.
+    command: caddy reverse-proxy --from "${FSW_DOMAIN:?set FSW_DOMAIN in .env}" --to 127.0.0.1:8090
+    volumes:
+      - caddy-data:/data
+    restart: unless-stopped
+
+volumes:
+  fsw-data: {}
+  caddy-data: {}
