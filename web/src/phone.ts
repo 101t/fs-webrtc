@@ -42,7 +42,7 @@ export class Phone {
   private onUnload = () => this.ua.stop();
 
   constructor(private account: SipAccount) {
-    this.pcConfig = { iceServers: account.ice_servers.length ? [{ urls: account.ice_servers }] : [] };
+    this.pcConfig = { iceServers: account.ice_servers };
     const scheme = location.protocol === "https:" ? "wss:" : "ws:";
     this.ua = new UA({
       sockets: [new WebSocketInterface(`${scheme}//${location.host}${account.websocket_path}`)],

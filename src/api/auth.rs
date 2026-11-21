@@ -13,9 +13,9 @@ use utoipa::ToSchema;
 
 use super::{
     ApiError, ErrorBody, Shared, UserId, bearer, constant_time_eq, new_session, now, random, require, token_hash,
-    valid_username,
+    valid_password, valid_username,
 };
-use crate::freeswitch::SIP_DOMAIN;
+use crate::{config::Config, freeswitch::SIP_DOMAIN};
 
 #[derive(Serialize, ToSchema)]
 pub struct ServerInfo {
@@ -92,7 +92,7 @@ pub async fn register(
     }
     let username = req.username.trim().to_ascii_lowercase();
     require(valid_username(&username), "username: 3-32 characters of a-z 0-9 . _ - starting with a letter or digit")?;
-    require((8..=128).contains(&req.password.chars().count()), "password: 8-128 characters")?;
+    require(valid_password(&req.password), "password: 8-128 characters")?;
     let display_name = req.display_name.as_deref().map(str::trim).filter(|d| !d.is_empty()).unwrap_or(&username);
     require(
         display_name.chars().count() <= 64 && !display_name.chars().any(char::is_control),
@@ -101,7 +101,6 @@ pub async fn register(
     let display_name = display_name.to_string();
 
     let password_hash = s.hash_password(req.password).await?;
-    let sip_password: String = random::<16>().iter().map(|b| format!("{b:02x}")).collect();
     let id: Option<i64> = sqlx::query_scalar(
         "INSERT INTO users (username, display_name, password_hash, sip_password, created_at, last_seen)
          VALUES (?1, ?2, ?3, ?4, ?5, ?5) ON CONFLICT (username) DO NOTHING RETURNING id",
@@ -109,7 +108,7 @@ pub async fn register(
     .bind(&username)
     .bind(&display_name)
     .bind(password_hash)
-    .bind(sip_password)
+    .bind(sip_password())
     .bind(now())
     .fetch_optional(&s.db)
     .await?;
@@ -119,6 +118,10 @@ pub async fn register(
     Ok((StatusCode::CREATED, Json(Session { token, username, display_name })))
 }
 
+fn sip_password() -> String {
+    random::<16>().iter().map(|b| format!("{b:02x}")).collect()
+}
+
 /// Hash checked when the username does not exist, so both failures take the same time.
 static DUMMY_HASH: LazyLock<String> =
     LazyLock::new(|| Argon2::default().hash_password(b"no such user").expect("argon2 with default params").to_string());
@@ -126,7 +129,11 @@ static DUMMY_HASH: LazyLock<String> =
 /// Sign in.
 #[utoipa::path(
     post, path = "/api/v1/auth/login", tag = "auth", security(()), request_body = LoginRequest,
-    responses((status = OK, body = Session), (status = UNAUTHORIZED, body = ErrorBody))
+    responses(
+        (status = OK, body = Session),
+        (status = UNAUTHORIZED, body = ErrorBody),
+        (status = TOO_MANY_REQUESTS, description = "Too many wrong passwords for this account", body = ErrorBody),
+    )
 )]
 pub async fn login(State(s): State<Shared>, Json(req): Json<LoginRequest>) -> Result<Json<Session>, ApiError> {
     let username = req.username.trim().to_ascii_lowercase();
@@ -136,7 +143,7 @@ pub async fn login(State(s): State<Shared>, Json(req): Json<LoginRequest>) -> Re
             .fetch_optional(&s.db)
             .await?;
     let hash = user.as_ref().map_or_else(|| DUMMY_HASH.clone(), |u| u.2.clone());
-    let ok = s.verify_password(req.password, hash).await?;
+    let ok = s.check_password(user.as_ref().map(|u| u.0), req.password, hash).await?;
     match user {
         Some((id, display_name, _)) if ok => {
             let token = new_session(&s.db, id).await?;
@@ -174,8 +181,19 @@ pub struct SipAccount {
     password: String,
     /// SIP-over-WebSocket path on this server.
     websocket_path: &'static str,
-    /// STUN/TURN URLs for `RTCPeerConnection`.
-    ice_servers: Vec<String>,
+    /// Pass as `iceServers` to `RTCPeerConnection`.
+    ice_servers: Vec<IceServer>,
+}
+
+/// An `RTCIceServer`.
+#[derive(Serialize, ToSchema)]
+pub struct IceServer {
+    #[schema(example = json!(["stun:stun.l.google.com:19302"]))]
+    urls: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    credential: Option<String>,
 }
 
 /// The signed-in user and their SIP credentials.
@@ -191,7 +209,92 @@ pub async fn me(State(s): State<Shared>, Extension(UserId(id)): Extension<UserId
         domain: SIP_DOMAIN,
         password,
         websocket_path: "/sip",
-        ice_servers: s.cfg.ice_servers.clone(),
+        ice_servers: ice_servers(&s.cfg),
     };
     Ok(Json(Me { username, display_name, sip }))
+}
+
+/// STUN servers as one entry, TURN servers (with the configured credentials) as another.
+fn ice_servers(cfg: &Config) -> Vec<IceServer> {
+    let (turn, stun): (Vec<String>, Vec<String>) =
+        cfg.ice_servers.iter().cloned().partition(|u| u.starts_with("turn:") || u.starts_with("turns:"));
+    [
+        IceServer { urls: stun, username: None, credential: None },
+        IceServer { urls: turn, username: cfg.turn_username.clone(), credential: cfg.turn_password.clone() },
+    ]
+    .into_iter()
+    .filter(|s| !s.urls.is_empty())
+    .collect()
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct PasswordChange {
+    current_password: String,
+    /// 8-128 characters.
+    new_password: String,
+}
+
+/// Change your password. Signs out your other sessions and replaces your SIP password, so other
+/// devices must sign in again; this session stays valid (fetch `/api/v1/me` for the new SIP password).
+#[utoipa::path(
+    put, path = "/api/v1/me/password", tag = "auth", request_body = PasswordChange,
+    responses(
+        (status = NO_CONTENT),
+        (status = BAD_REQUEST, body = ErrorBody),
+        (status = FORBIDDEN, description = "Wrong current password", body = ErrorBody),
+        (status = TOO_MANY_REQUESTS, body = ErrorBody),
+    )
+)]
+pub async fn change_password(
+    State(s): State<Shared>,
+    Extension(UserId(id)): Extension<UserId>,
+    headers: HeaderMap,
+    Json(req): Json<PasswordChange>,
+) -> Result<StatusCode, ApiError> {
+    require(valid_password(&req.new_password), "new password: 8-128 characters")?;
+    s.confirm_password(id, req.current_password).await?;
+    let hash = s.hash_password(req.new_password).await?;
+    let current = bearer(&headers).map(token_hash).unwrap_or_default();
+    let mut tx = s.db.begin().await?;
+    sqlx::query("UPDATE users SET password_hash = ?, sip_password = ? WHERE id = ?")
+        .bind(hash)
+        .bind(sip_password())
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?")
+        .bind(id)
+        .bind(current)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    tracing::info!(user_id = id, "password changed");
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct AccountDeletion {
+    password: String,
+}
+
+/// Delete your account with its sessions and contacts. Cannot be undone; the username becomes free again.
+#[utoipa::path(
+    delete, path = "/api/v1/me", tag = "auth", request_body = AccountDeletion,
+    responses(
+        (status = NO_CONTENT),
+        (status = FORBIDDEN, description = "Wrong password", body = ErrorBody),
+        (status = TOO_MANY_REQUESTS, body = ErrorBody),
+    )
+)]
+pub async fn delete_account(
+    State(s): State<Shared>,
+    Extension(UserId(id)): Extension<UserId>,
+    Json(req): Json<AccountDeletion>,
+) -> Result<StatusCode, ApiError> {
+    s.confirm_password(id, req.password).await?;
+    // Sessions and contacts go with it (ON DELETE CASCADE).
+    let username: String =
+        sqlx::query_scalar("DELETE FROM users WHERE id = ? RETURNING username").bind(id).fetch_one(&s.db).await?;
+    tracing::info!(username, "account deleted");
+    Ok(StatusCode::NO_CONTENT)
 }

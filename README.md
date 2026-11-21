@@ -130,6 +130,7 @@ Settings live in `.env` next to `docker-compose.yml`. Apply changes with `docker
 | `FSW_INVITE_CODE` | *(none)* | When set, creating an account requires this code. |
 | `FSW_EXT_IP` | STUN discovery | Public IP FreeSWITCH announces for media. Set it on LAN-only setups. |
 | `FSW_ICE_SERVERS` | `stun:stun.l.google.com:19302` | STUN/TURN URLs for browsers, comma-separated. |
+| `FSW_TURN_USERNAME`, `FSW_TURN_PASSWORD` | *(none)* | Credentials for the `turn:` URLs ([TURN setup](docs/deployment.md#nat-and-media)). |
 | `FSW_VERSION` | `latest` | Image tag to run, e.g. `1.0.0`. |
 | `FSW_LOG_JSON` | `true` in Docker | JSON log lines. Level via `RUST_LOG`. |
 | `FSW_LISTEN` | `0.0.0.0:8090` | Server address (Compose: `127.0.0.1:8090`). |
@@ -145,7 +146,9 @@ Every server setting is also a CLI flag: `fs-webrtc --help`.
   default passwords and no route to the phone network. The service refuses to start with a
   weak shared secret.
 * **Passwords** are hashed with argon2id; sessions are random 256-bit tokens stored as SHA-256.
-  Logins take the same time whether or not the user exists.
+  Logins take the same time whether or not the user exists, and an account locks for 15 minutes
+  after 5 wrong passwords. Changing your password signs out your other devices and replaces your
+  SIP password.
 * **Only mutual contacts can call.** Checked by FreeSWITCH's dialplan on every call, via the server.
 * **Nothing reaches FreeSWITCH unvalidated.** Usernames are a strict allow-list before they touch
   XML or a dial string; display names never do.
@@ -171,6 +174,8 @@ another client. Interactive docs: **`https://your-domain/docs`**, spec at `/open
 | `POST` | `/api/v1/auth/login` | Sign in → session token |
 | `POST` | `/api/v1/auth/logout` | End the session |
 | `GET` | `/api/v1/me` | Profile and SIP credentials |
+| `PUT` | `/api/v1/me/password` | Change password (signs out other sessions) |
+| `DELETE` | `/api/v1/me` | Delete the account |
 | `GET` | `/api/v1/contacts` | Contacts and requests, with online status |
 | `POST` | `/api/v1/contacts` | Send or accept a contact request |
 | `DELETE` | `/api/v1/contacts/{username}` | Remove, cancel or decline |
@@ -205,7 +210,7 @@ make web-dev    # web app with hot reload on :5173
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Ideas that would make great contributions: group calls
 (FreeSWITCH conference), text chat (SIP MESSAGE), push notifications and an installable PWA,
-TURN credentials, account settings (change password, delete account), translations.
+translations.
 
 ## Releases
 

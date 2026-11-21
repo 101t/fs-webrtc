@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Account } from "./Account";
 import { ApiError, api, token, type Contact, type Me } from "./api";
 import { Auth } from "./Auth";
 import { Call, Incoming } from "./Call";
@@ -20,22 +21,37 @@ export default function App() {
     if (token.get()) load();
   }, [load]);
 
-  const signOut = useCallback(() => {
-    api.logout().catch(() => {});
+  const forget = useCallback(() => {
     token.clear();
     setMe(null);
   }, []);
+  const signOut = useCallback(() => {
+    api.logout().catch(() => {});
+    forget();
+  }, [forget]);
 
   if (loading) return <main className="auth" aria-busy="true" />;
   if (!me) return <Auth onSignedIn={load} />;
-  return <Home me={me} onSignOut={signOut} />;
+  // A new password also means a new SIP password: reloading `me` re-registers the phone with it.
+  return <Home me={me} onSignOut={signOut} onPasswordChanged={load} onDeleted={forget} />;
 }
 
 const REGISTRATION_LABEL = { online: "Ready for calls", connecting: "Connecting…", offline: "Offline" };
 
-function Home({ me, onSignOut }: { me: Me; onSignOut: () => void }) {
+function Home({
+  me,
+  onSignOut,
+  onPasswordChanged,
+  onDeleted,
+}: {
+  me: Me;
+  onSignOut: () => void;
+  onPasswordChanged: () => void;
+  onDeleted: () => void;
+}) {
   const { phone, registration, call, local, remote, notice } = usePhone(me.sip);
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [settings, setSettings] = useState(false);
 
   const refresh = useCallback(() => {
     api.contacts().then(setContacts, (e) => e instanceof ApiError && e.status === 401 && onSignOut());
@@ -67,6 +83,11 @@ function Home({ me, onSignOut }: { me: Me; onSignOut: () => void }) {
             <strong>{me.display_name}</strong>
             <span className={`status ${registration}`}>{REGISTRATION_LABEL[registration]}</span>
           </div>
+          {/* Disabled in a call: a password change re-registers the phone, which would drop it. */}
+          <button className="icon-button subtle" onClick={() => setSettings(true)} disabled={!!call}
+            title="Account" aria-label="Account">
+            <Icon name="user" />
+          </button>
           <button className="icon-button subtle" onClick={onSignOut} title="Sign out" aria-label="Sign out">
             <Icon name="logout" />
           </button>
@@ -94,6 +115,10 @@ function Home({ me, onSignOut }: { me: Me; onSignOut: () => void }) {
         )}
       </main>
 
+      {settings && (
+        <Account username={me.username} onClose={() => setSettings(false)}
+          onPasswordChanged={onPasswordChanged} onDeleted={onDeleted} />
+      )}
       {ringing && phone && <Incoming call={call} name={nameOf(call.peer)} phone={phone} />}
       {notice && (
         <div className="toast" role="status" onClick={() => phone?.dismissNotice()}>

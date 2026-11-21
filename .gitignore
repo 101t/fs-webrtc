@@ -7,3 +7,5 @@
 node_modules
 /web/dist
 .DS_Store
+# install.sh output when run inside a clone
+/fs-webrtc/

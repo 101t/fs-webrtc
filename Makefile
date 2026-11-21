@@ -70,7 +70,7 @@ logs: ## Follow compose logs
 	docker compose logs -f
 
 fs-cli: ## FreeSWITCH console of the compose stack
-	@set -a; . ./.env; set +a; docker compose exec freeswitch fs_cli -p "$$FSW_FREESWITCH_SECRET"
+	@set -a; . ./.env; set +a; docker compose exec freeswitch fs_cli -P 8031 -p "$$FSW_FREESWITCH_SECRET"
 
 # ---------------------------------------------------------------- release
 

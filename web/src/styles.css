@@ -557,3 +557,45 @@ input:focus {
     bottom: 112px;
   }
 }
+
+/* ---------------------------------------------------------------- account */
+
+.account {
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 20px 24px 24px;
+  color: var(--text);
+}
+.account::backdrop {
+  background: rgb(0 0 0 / 0.5);
+}
+.account header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.account form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 16px;
+}
+.account h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.danger-zone {
+  margin-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.primary.danger {
+  background: var(--danger);
+  color: #fff;
+}
+.success {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: var(--accept);
+  background: color-mix(in srgb, var(--accept) 10%, transparent);
+}

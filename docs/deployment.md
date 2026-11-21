@@ -10,7 +10,7 @@ a domain name, and the Compose stack (fs-webrtc + FreeSWITCH + Caddy). This page
 | 80, 443 | TCP | Caddy | Web app, API, SIP WebSocket; HTTPS certificates |
 | 16384-16584 | UDP | FreeSWITCH | Voice and video (about 4 ports per video call) |
 | 8090 | TCP, 127.0.0.1 | fs-webrtc | Behind Caddy |
-| 5066, 5090, 8021 | TCP, 127.0.0.1 | FreeSWITCH | SIP WebSocket, SIP, event socket |
+| 5066, 5090, 8031 | TCP, 127.0.0.1 | FreeSWITCH | SIP WebSocket, SIP, event socket |
 
 ```bash
 sudo ufw allow 80,443/tcp && sudo ufw allow 16384:16584/udp
@@ -30,9 +30,28 @@ announce an IP address that browsers can reach: `FSW_EXT_IP`.
   leave `FSW_EXT_IP` empty, or set it to your public IP.
 * **LAN only (office, no internet access needed):** set `FSW_EXT_IP` to the server's LAN IP and
   `FSW_DOMAIN` to that IP. Caddy issues a self-signed certificate; accept it once per device.
-* **Restrictive networks** (UDP blocked): browsers need a TURN relay. `FSW_ICE_SERVERS` takes
-  STUN/TURN URLs, but TURN servers that require a username and password are not supported yet
-  ([help wanted](https://github.com/101t/fs-webrtc/issues)).
+* **Restrictive networks** (UDP blocked, some corporate and hotel Wi-Fi): browsers need a TURN
+  relay. Add its URLs to `FSW_ICE_SERVERS` and its credentials to `FSW_TURN_USERNAME` /
+  `FSW_TURN_PASSWORD`; they are sent to signed-in users' browsers only, and only for the
+  `turn:`/`turns:` URLs. A hosted TURN service works, or your own [coturn](https://github.com/coturn/coturn):
+
+  ```ini
+  # /etc/turnserver.conf
+  realm=call.example.com
+  lt-cred-mech
+  user=fsw:a-long-random-password
+  # don't relay into your private networks
+  denied-peer-ip=10.0.0.0-10.255.255.255
+  denied-peer-ip=172.16.0.0-172.31.255.255
+  denied-peer-ip=192.168.0.0-192.168.255.255
+  ```
+
+  ```ini
+  # .env
+  FSW_ICE_SERVERS=stun:stun.l.google.com:19302,turn:call.example.com:3478?transport=udp,turn:call.example.com:3478?transport=tcp
+  FSW_TURN_USERNAME=fsw
+  FSW_TURN_PASSWORD=a-long-random-password
+  ```
 
 **Symptom of a wrong `FSW_EXT_IP`:** the call connects (timer runs) but nobody hears or sees
 anything, and FreeSWITCH hangs up after about a minute.

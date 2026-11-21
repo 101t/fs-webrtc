@@ -7,7 +7,7 @@ export type SipAccount = {
   domain: string;
   password: string;
   websocket_path: string;
-  ice_servers: string[];
+  ice_servers: RTCIceServer[];
 };
 export type Me = { username: string; display_name: string; sip: SipAccount };
 export type Contact = {
@@ -53,6 +53,9 @@ export const api = {
   login: (b: { username: string; password: string }) => request<Session>("POST", "/api/v1/auth/login", b),
   logout: () => request<void>("POST", "/api/v1/auth/logout"),
   me: () => request<Me>("GET", "/api/v1/me"),
+  changePassword: (b: { current_password: string; new_password: string }) =>
+    request<void>("PUT", "/api/v1/me/password", b),
+  deleteAccount: (password: string) => request<void>("DELETE", "/api/v1/me", { password }),
   contacts: () => request<Contact[]>("GET", "/api/v1/contacts"),
   addContact: (username: string) => request<Contact>("POST", "/api/v1/contacts", { username }),
   removeContact: (username: string) =>

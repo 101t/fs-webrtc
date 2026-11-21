@@ -4,7 +4,8 @@ mod auth;
 mod contacts;
 
 use std::{
-    sync::Arc,
+    collections::HashMap,
+    sync::{Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -46,15 +47,20 @@ pub struct AppState {
     pub db: SqlitePool,
     /// Caps concurrent argon2 runs (~19 MiB and tens of ms each) so login floods cannot exhaust the host.
     hashing: Semaphore,
+    /// Wrong-password count per user id and when that count started, for [`AppState::check_password`].
+    failures: Mutex<HashMap<i64, (u32, i64)>>,
 }
 
 pub type Shared = Arc<AppState>;
 
 const SESSION_TTL_SECS: i64 = 30 * 24 * 3600;
+/// Wrong passwords allowed per account within [`LOCKOUT_SECS`] before it is locked for the rest of that window.
+const MAX_FAILURES: u32 = 5;
+const LOCKOUT_SECS: i64 = 15 * 60;
 
 impl AppState {
     pub fn new(cfg: Config, db: SqlitePool) -> Self {
-        Self { cfg, db, hashing: Semaphore::new(4) }
+        Self { cfg, db, hashing: Semaphore::new(4), failures: Mutex::default() }
     }
 
     async fn hash_password(&self, password: String) -> Result<String, ApiError> {
@@ -72,6 +78,45 @@ impl AppState {
         })
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))
+    }
+
+    /// Checks a password against a user's hash, allowing [`MAX_FAILURES`] wrong guesses per account per
+    /// [`LOCKOUT_SECS`]. `id` is `None` for unknown users (checked against a dummy hash, never counted).
+    async fn check_password(&self, id: Option<i64>, password: String, hash: String) -> Result<bool, ApiError> {
+        if let Some(id) = id {
+            let mut failures = self.failures.lock().expect("failures lock");
+            let now = now();
+            let (count, since) = failures.entry(id).or_insert((0, now));
+            if now - *since >= LOCKOUT_SECS {
+                (*count, *since) = (0, now);
+            }
+            if *count >= MAX_FAILURES {
+                let minutes = (*since + LOCKOUT_SECS - now + 59) / 60;
+                return Err(ApiError::TooManyRequests(format!(
+                    "too many wrong passwords for this account, try again in {minutes} minute{}",
+                    if minutes == 1 { "" } else { "s" }
+                )));
+            }
+            // Counted before checking, so parallel guesses cannot all slip in under the limit.
+            *count += 1;
+        }
+        let ok = self.verify_password(password, hash).await?;
+        if let (Some(id), true) = (id, ok) {
+            self.failures.lock().expect("failures lock").remove(&id);
+        }
+        Ok(ok)
+    }
+
+    /// Re-confirms the signed-in user's password before a sensitive change (throttled like sign-in).
+    async fn confirm_password(&self, id: i64, password: String) -> Result<(), ApiError> {
+        let hash: String =
+            sqlx::query_scalar("SELECT password_hash FROM users WHERE id = ?").bind(id).fetch_one(&self.db).await?;
+        if self.check_password(Some(id), password, hash).await? {
+            Ok(())
+        } else {
+            // Not 401: that would sign the browser out.
+            Err(ApiError::Forbidden("wrong password"))
+        }
     }
 }
 
@@ -122,7 +167,8 @@ pub fn router(state: AppState) -> Router {
     let state = Arc::new(state);
 
     let (api, openapi) = OpenApiRouter::with_openapi(ApiDoc::openapi())
-        .routes(routes!(auth::me))
+        .routes(routes!(auth::me, auth::delete_account))
+        .routes(routes!(auth::change_password))
         .routes(routes!(auth::logout))
         .routes(routes!(contacts::list, contacts::add))
         .routes(routes!(contacts::remove))
@@ -231,6 +277,10 @@ pub fn valid_username(s: &str) -> bool {
         && s.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"._-".contains(&b))
 }
 
+pub fn valid_password(s: &str) -> bool {
+    (8..=128).contains(&s.chars().count())
+}
+
 pub fn require(ok: bool, msg: impl Into<String>) -> Result<(), ApiError> {
     if ok { Ok(()) } else { Err(ApiError::BadRequest(msg.into())) }
 }
@@ -249,6 +299,8 @@ pub enum ApiError {
     NotFound(String),
     #[error("{0}")]
     Conflict(&'static str),
+    #[error("{0}")]
+    TooManyRequests(String),
     #[error("internal error")]
     Internal(String),
 }
@@ -276,6 +328,7 @@ impl IntoResponse for ApiError {
             Self::Forbidden(_) => (StatusCode::FORBIDDEN, "forbidden"),
             Self::NotFound(_) => (StatusCode::NOT_FOUND, "not_found"),
             Self::Conflict(_) => (StatusCode::CONFLICT, "conflict"),
+            Self::TooManyRequests(_) => (StatusCode::TOO_MANY_REQUESTS, "too_many_requests"),
             Self::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal"),
         };
         if status.is_server_error() {
@@ -433,6 +486,106 @@ pub(crate) mod tests {
         assert_eq!(call(&invite, "POST", "/api/v1/auth/register", None, Some(body)).await.0, StatusCode::FORBIDDEN);
         let body = json!({"username": "alice", "password": "correct horse", "invite_code": "family"});
         assert_eq!(call(&invite, "POST", "/api/v1/auth/register", None, Some(body)).await.0, StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn wrong_passwords_lock_the_account() {
+        let app = app(&[]).await;
+        signup(&app, "alice").await;
+        signup(&app, "bob").await;
+        let login = |user: &str, pw: &str| json!({"username": user, "password": pw});
+        for _ in 0..MAX_FAILURES {
+            let (s, _) = call(&app, "POST", "/api/v1/auth/login", None, Some(login("alice", "wrong pass"))).await;
+            assert_eq!(s, StatusCode::UNAUTHORIZED);
+        }
+        let (s, v) = call(&app, "POST", "/api/v1/auth/login", None, Some(login("alice", "correct horse"))).await;
+        assert_eq!((s, v["error"].as_str()), (StatusCode::TOO_MANY_REQUESTS, Some("too_many_requests")), "{v}");
+        assert!(v["message"].as_str().unwrap().contains("15 minutes"), "{v}");
+        // Other accounts and unknown usernames are unaffected.
+        assert_eq!(
+            call(&app, "POST", "/api/v1/auth/login", None, Some(login("bob", "correct horse"))).await.0,
+            StatusCode::OK
+        );
+        for _ in 0..=MAX_FAILURES {
+            let (s, _) = call(&app, "POST", "/api/v1/auth/login", None, Some(login("nobody", "wrong pass"))).await;
+            assert_eq!(s, StatusCode::UNAUTHORIZED);
+        }
+    }
+
+    #[tokio::test]
+    async fn password_change_and_account_deletion() {
+        let app = app(&[]).await;
+        let (alice, bob) = (signup(&app, "alice").await, signup(&app, "bob").await);
+        let (_, v) = call(
+            &app,
+            "POST",
+            "/api/v1/auth/login",
+            None,
+            Some(json!({"username": "alice", "password": "correct horse"})),
+        )
+        .await;
+        let other_device = v["token"].as_str().unwrap().to_string();
+        let sip = |t: String| {
+            let app = app.clone();
+            async move { call(&app, "GET", "/api/v1/me", Some(&t), None).await.1["sip"]["password"].clone() }
+        };
+        let old_sip = sip(alice.clone()).await;
+
+        let change = |current: &str, new: &str| json!({"current_password": current, "new_password": new});
+        let put = |body| call(&app, "PUT", "/api/v1/me/password", Some(&alice), Some(body));
+        assert_eq!(put(change("wrong pass", "new password")).await.0, StatusCode::FORBIDDEN);
+        assert_eq!(put(change("correct horse", "short")).await.0, StatusCode::BAD_REQUEST);
+        assert_eq!(put(change("correct horse", "new password")).await.0, StatusCode::NO_CONTENT);
+        assert_eq!(call(&app, "GET", "/api/v1/me", Some(&other_device), None).await.0, StatusCode::UNAUTHORIZED);
+        let new_sip = sip(alice.clone()).await;
+        assert!(new_sip.is_string() && new_sip != old_sip, "SIP password rotated");
+        let login = |pw: &str| json!({"username": "alice", "password": pw});
+        assert_eq!(
+            call(&app, "POST", "/api/v1/auth/login", None, Some(login("correct horse"))).await.0,
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(call(&app, "POST", "/api/v1/auth/login", None, Some(login("new password"))).await.0, StatusCode::OK);
+
+        call(&app, "POST", "/api/v1/contacts", Some(&alice), Some(json!({"username": "bob"}))).await;
+        call(&app, "POST", "/api/v1/contacts", Some(&bob), Some(json!({"username": "alice"}))).await;
+        let delete = |pw: &str| call(&app, "DELETE", "/api/v1/me", Some(&alice), Some(json!({"password": pw})));
+        assert_eq!(delete("correct horse").await.0, StatusCode::FORBIDDEN);
+        assert_eq!(delete("new password").await.0, StatusCode::NO_CONTENT);
+        assert_eq!(call(&app, "GET", "/api/v1/me", Some(&alice), None).await.0, StatusCode::UNAUTHORIZED);
+        assert_eq!(call(&app, "GET", "/api/v1/contacts", Some(&bob), None).await.1, json!([]));
+        let dir = [("section", "directory"), ("user", "alice"), ("domain", "fs-webrtc")];
+        assert!(xml_curl(&app, &dir, SECRET).await.1.contains("not found"));
+        signup(&app, "alice").await;
+    }
+
+    #[tokio::test]
+    async fn turn_credentials_go_only_to_turn_servers() {
+        let app = app(&[
+            "--ice-servers",
+            "stun:stun.example:3478,turn:turn.example:3478?transport=udp,turns:turn.example:5349",
+            "--turn-username",
+            "fsw",
+            "--turn-password",
+            "s3cret",
+        ])
+        .await;
+        let token = signup(&app, "alice").await;
+        let (_, me) = call(&app, "GET", "/api/v1/me", Some(&token), None).await;
+        assert_eq!(
+            me["sip"]["ice_servers"],
+            json!([
+                {"urls": ["stun:stun.example:3478"]},
+                {"urls": ["turn:turn.example:3478?transport=udp", "turns:turn.example:5349"], "username": "fsw", "credential": "s3cret"},
+            ])
+        );
+        let mut half = <Config as clap::Parser>::parse_from([
+            "fs-webrtc",
+            "--freeswitch-secret",
+            SECRET,
+            "--turn-username",
+            "fsw",
+        ]);
+        assert!(half.validate().is_err());
     }
 
     #[test]

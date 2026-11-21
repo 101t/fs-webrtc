@@ -15,6 +15,7 @@ const PATHS = {
   check: "M20 6L9 17l-5-5",
   x: "M18 6L6 18M6 6l12 12",
   logout: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9",
+  user: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
 };
 
 export type IconName = keyof typeof PATHS;

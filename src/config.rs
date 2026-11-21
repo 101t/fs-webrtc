@@ -34,6 +34,14 @@ pub struct Config {
     #[arg(long, env = "FSW_ICE_SERVERS", value_delimiter = ',', default_value = "stun:stun.l.google.com:19302")]
     pub ice_servers: Vec<String>,
 
+    /// Username for the `turn:`/`turns:` servers in the ICE server list (coturn `user=`, or a hosted TURN service).
+    #[arg(long, env = "FSW_TURN_USERNAME")]
+    pub turn_username: Option<String>,
+
+    /// Password for those TURN servers. Every signed-in user's browser receives it.
+    #[arg(long, env = "FSW_TURN_PASSWORD", hide_env_values = true)]
+    pub turn_password: Option<String>,
+
     /// Directory with the built web app.
     #[arg(long, env = "FSW_WEB_DIR", default_value = "web/dist")]
     pub web_dir: PathBuf,
@@ -48,6 +56,11 @@ impl Config {
     pub fn validate(&mut self) -> Result<(), String> {
         self.invite_code = self.invite_code.take().filter(|c| !c.trim().is_empty());
         self.ice_servers.retain(|s| !s.trim().is_empty());
+        self.turn_username = self.turn_username.take().filter(|u| !u.is_empty());
+        self.turn_password = self.turn_password.take().filter(|p| !p.is_empty());
+        if self.turn_username.is_some() != self.turn_password.is_some() {
+            return Err("set both FSW_TURN_USERNAME and FSW_TURN_PASSWORD, or neither".into());
+        }
         // It is also written into FreeSWITCH XML and HTTP Basic credentials, so keep it to safe characters.
         let s = &self.freeswitch_secret;
         if s.len() < 32 || !s.bytes().all(|b| b.is_ascii_alphanumeric() || b"-_".contains(&b)) {

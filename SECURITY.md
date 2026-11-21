@@ -25,6 +25,6 @@ Only the latest 1.x release receives fixes.
 
 - [ ] Served over HTTPS (the Compose stack does this with Caddy). Browsers refuse camera and microphone on plain HTTP.
 - [ ] `FSW_FREESWITCH_SECRET` generated with `openssl rand -hex 32` (`install.sh` does this) and `.env` readable only by root.
-- [ ] Port 8090 (fs-webrtc) and 5066/8021 (FreeSWITCH) not reachable from the internet; the Compose stack binds them to 127.0.0.1.
+- [ ] Port 8090 (fs-webrtc) and 5066/5090/8031 (FreeSWITCH) not reachable from the internet; the Compose stack binds them to 127.0.0.1.
 - [ ] `FSW_SIGNUP=false` or `FSW_INVITE_CODE` set on a server reachable by strangers.
 - [ ] Only TCP 80/443 and UDP 16384-16584 open in the firewall.
